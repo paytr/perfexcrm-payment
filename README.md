@@ -18,3 +18,8 @@ You can follow the steps below to install the add-on.
 3. Log in to the Perfex CRM Admin panel and click on the modules menu.
 4. Activate the PayTR Virtual Pos iFrame API module.
 ```
+
+## Türkçe Kurulum ve Kullanım Kılavuzu
+
+Türkçe olarak hazırlanmış kurulum ve kullanım kılavuzuna [bu adresten](https://github.com/paytr/perfexcrm-payment/blob/main/Perfex%20CRM%20-%20Kurulum%20ve%20Kullan%C4%B1m%20K%C4%B1lavuzu.pdf) ulaşabilirsiniz.
+
