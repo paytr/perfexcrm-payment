@@ -60,7 +60,13 @@ class Paytr_gateway extends App_gateway
                 'name'          => 'currencies',
                 'label'         => 'settings_paymentmethod_currencies',
                 'default_value' => 'USD,TRY,EUR,RUB',
-            )
+            ),
+            array(
+                'name' => 'paytr_default_mail',
+                // 'encrypted' => true,
+                'label' => 'Default Mail For No Contact Companies',
+                'type'=>'input',
+            ),
         ));
 
     }
@@ -86,7 +92,7 @@ class Paytr_gateway extends App_gateway
         $paytr_helper->setInstallment($this->calculateInstallment($data['invoice']->items, $this->ci->invoice_items_model->get_grouped()));
         $paytr_helper->setCurrency($data['invoice']->currency_name);
         $paytr_helper->setTestMode($this->getSetting('paytr_test_mode'));
-        $paytr_helper->setLang( "tr");
+        $paytr_helper->setLang( isset($billing_info['language']) && $billing_info['language'] == 'turkish' ? 'tr' : 'english');
         $paytr_helper->setPhoneNumber($data['invoice']->client->phonenumber);
         $paytr_helper->setMerchantOkUrl( site_url('paytr_gateway/checkout_module/success?hash='.$data['hash'].'&invoice_id='.$data['invoiceid']));
         $paytr_helper->setMerchantFailUrl( site_url('paytr_gateway/checkout_module/failed?hash='.$data['hash'].'&invoice_id='.$data['invoiceid']));
@@ -110,8 +116,6 @@ class Paytr_gateway extends App_gateway
      */
     private function get_billing_info($invoice)
     {
-        $staff = ($this->ci->load->model('staff_model'))->staff_model->get(get_staff_user_id());
-
         $country = null;
         if ($invoice->billing_country) {
             $country = get_country($invoice->billing_country);
@@ -141,14 +145,92 @@ class Paytr_gateway extends App_gateway
         if ($country) {
             $billing_address['country_code'] = $country->iso2; // country code
         }
+
+        /**
+         * Varsayılan olarak isim kısmına Şirket Adı
+         * Soyadına da Şirket Yetkili ekliyoruz
+         * Eposta adresi alanı da ödeme ayarlarında 
+         * tanımlanan eposta adresi giriliyor.
+         * 
+         * Bu ayarlar eğer daha alakalı bir veri bulunursa
+         * onunla değiştirilecek. 
+         * 
+         * Sadece Aktif bir Şirket Kişisi yoksa bu detaylar kullanılacak
+         * Çünkü eposta ve isim alanları zorunlu ve eğer kişi oluşturmadan hızlıca
+         * Şirket + Fatura oluşturup bağlantısını manuel olarak gönderirseniz.
+         * Ödeme alanında müşteriniz sorun yaşayacaktır.
+         * 
+         * Bu varsayılan ayarlar ile bunun önüne geçiyoruz.
+         * 
+         * E. Altay KOLUAÇIK - https://evrimaltay.net/perfexcrm-paytr-eklenti-duzeltmeleri/
+         * 16/06/2023
+         */
+        $firstname = $invoice->client->company;
+        $lastname = 'Şirket Yetkilisi';
+        $email_address = $this->getSetting('paytr_default_mail');
+
+        if(is_client_logged_in()){
+            /**
+             * Öncelikli olarak giriş yapmış müşteriyi deniyoruz, giriş yapmış ise onun verilerini kullanıyoruz
+             * 
+             * E. Altay KOLUAÇIK - https://evrimaltay.net/perfexcrm-paytr-eklenti-duzeltmeleri/
+             * 16/06/2023
+             */
+            $firstname = $GLOBALS['contact']->firstname;
+            $lastname = $GLOBALS['contact']->lastname;
+            $email_address = $GLOBALS['contact']->email;
+        }else if(get_staff_user_id() !== false){
+            /**
+             * Müşteri girişi yok ise giriş yapmış personel var ise onu deniyoruz. Bu sayede yönetim paneline giriş yapmış bir şekilde
+             * Ödemeyi test etmek istediğinizde hata almayacaksınız, fakat ödeme yaparsanız PayTR'a sizin bilgileriniz iletilmiş olacak.
+             * Daha önceden de bu şekildeydi zaten.
+             * 
+             * E. Altay KOLUAÇIK - https://evrimaltay.net/perfexcrm-paytr-eklenti-duzeltmeleri/
+             * 16/06/2023
+             */
+            $staff = ($this->ci->load->model('staff_model'))->staff_model->get(get_staff_user_id());
+            $firstname = $staff->firstname;
+            $lastname = $staff->lastname;
+            $email_address = $staff->email;
+        }else{
+            /**
+             * Burada ise işleri biraz değiştiriyoruz.
+             * Eğer hiç giriş yapan kullanıcı yoksa ki genelde PerfexCRM bu şekilde kullanılıyor.
+             * Sistem o şirkete ait kişileri çekiyor ve ilk kişi adına ödeme alındığını farz ederek PayTR'a bilgileri iletiyor.
+             * Ki varsayılan olarak böyle yapılması daha uygun, sonuç olarak fatura bağlantısı özel ve sadece müşteriye iletiliyor.
+             * Eğer güvenlik riski taşıdığı düşünülüyorsa rahatlıkla yönetim panelinden giriş yapmamış kişilerin fatura görüntülenmesi kapatılabiliyor.
+             * 
+             * E. Altay KOLUAÇIK - https://evrimaltay.net/perfexcrm-paytr-eklenti-duzeltmeleri/
+             * 16/06/2023
+             */
+            $contacts = ($this->ci->load->model('clients_model'))->clients_model->get_contacts($invoice->clientid);
+        
+            if(count($contacts) > 0){
+                $contact = $contacts[0];
+                $firstname = $contact['firstname'];
+                $lastname = $contact['lastname'];
+                $email_address = $contact['email'];
+            }
+        }
+
+        /**
+         * Eğer müşteri Türkçe'den farklı bir dil kullanıyorsa 
+         * O dili de iletelim.
+         * 
+         * E. Altay KOLUAÇIK - https://evrimaltay.net/perfexcrm-paytr-eklenti-duzeltmeleri/
+         * 16/06/2023
+         */
+        if($invoice->client->default_language != 'turkish'){
+            $payer['language'] = $invoice->client->default_language;
+        }
+        
         $name = [
-            'given_name' => (is_client_logged_in() ? $GLOBALS['contact']->firstname : $staff->firstname),
-            'surname'    => (is_client_logged_in() ? $GLOBALS['contact']->lastname : $staff->lastname),
+            'given_name' => $firstname,
+            'surname'    => $lastname,
         ];
         if (!empty($name['given_name'])) {
             $payer['name'] = $name;
         }
-        $email_address = (is_client_logged_in() ? $GLOBALS['contact']->email  : $staff->email);
         if ($email_address) {
             $payer['email_address'] = $email_address;
         }
