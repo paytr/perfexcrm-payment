@@ -59,17 +59,19 @@ class PaytrHelper
     /**
      * @return mixed
      */
-    public function getUserIp()
-    {
-        if( isset( $_SERVER["HTTP_CLIENT_IP"] ) ) {
-            $ip = $_SERVER["HTTP_CLIENT_IP"];
-        } elseif( isset( $_SERVER["HTTP_X_FORWARDED_FOR"] ) ) {
+    public function getUserIp() {
+        if (isset($_SERVER["HTTP_CF_CONNECTING_IP"])) {
+            $ip = $_SERVER["HTTP_CF_CONNECTING_IP"];
+        } elseif (isset($_SERVER["HTTP_X_FORWARDED_FOR"])) {
             $ip = $_SERVER["HTTP_X_FORWARDED_FOR"];
+        } elseif (isset($_SERVER["HTTP_CLIENT_IP"])) {
+            $ip = $_SERVER["HTTP_CLIENT_IP"];
         } else {
             $ip = $_SERVER["REMOTE_ADDR"];
         }
         return $ip;
     }
+
 
     /**
      * @param $value
